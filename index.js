@@ -144,14 +144,14 @@ async function run() {
     app.patch('/menu/:id', async(req,res) => {
       const item = req.body;
       const id = req.params.id;
-      const filter = {_id: id ||  new ObjectId(id)};
+      const filter = { $or:[{_id:new ObjectId(id)}, {_id : id}]};
       const updateDoc = {
         $set: {
           name: item.name,
           category: item.category,
           price: item.price,
           recipe: item.recipe,
-          Image: item.Image
+          image: item.image
         }
       }
       const result = await menuCollection.updateOne(filter, updateDoc);
