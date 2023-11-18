@@ -100,7 +100,7 @@ async function run() {
     })
     app.delete('/users/:id',verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
-      const query = { _id: new ObjectId(id) }
+      const query = { $or:[{_id:new ObjectId(id)}, {_id : id}]}
       const result = await userCollection.deleteOne(query);
       res.send(result)
     })
@@ -108,7 +108,7 @@ async function run() {
     app.patch('/users/admin/:id', verifyToken,verifyAdmin, async (req, res) => {
       const id = req.params.id;
       console.log(id);
-      const filter = { _id: new ObjectId(id) };
+      const filter = { $or:[{_id:new ObjectId(id)}, {_id : id}]};
       const updateDoc = {
         $set: {
           role: 'admin'
@@ -164,7 +164,7 @@ async function run() {
     })
     app.delete('/menu/:id',verifyToken,verifyAdmin, async(req, res) => {
       const id = req.params.id;
-      const query = {_id: new ObjectId(id)}
+      const query = { $or:[{_id:new ObjectId(id)}, {_id : id}]}
       const result = await menuCollection.deleteOne(query);
       res.send(result)
     })
@@ -174,7 +174,7 @@ async function run() {
     })
     app.delete('/carts/:id', async (req, res) => {
       const id = req.params.id;
-      const query = { _id: new ObjectId(id) }
+      const query = { $or:[{_id:new ObjectId(id)}, {_id : id}]}
       const result = await cartsCollection.deleteOne(query)
       res.send(result)
     })
