@@ -3,7 +3,8 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express()
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-require('dotenv').config()
+require('dotenv').config();
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 const port = process.env.PORT || 5000;
 
 // middleware 
@@ -32,6 +33,7 @@ async function run() {
     const menuCollection = client.db("restauDB").collection("menu")
     const reviewsCollection = client.db("restauDB").collection("reviews")
     const cartsCollection = client.db("restauDB").collection("carts")
+    const paymentCollection = client.db("restauDB").collection("payments")
 
 
     //  jwt here 
@@ -57,13 +59,13 @@ async function run() {
       })
     }
 
-    const verifyAdmin = async(req, res, next) => {
+    const verifyAdmin = async (req, res, next) => {
       const email = req.decoded?.email;
-      const query = {email: email};
+      const query = { email: email };
       const user = await userCollection.findOne(query);
       const isAdmin = user?.role === 'admin';
-      if(!isAdmin){
-        return res.status(403).send({ message: 'forbidden access'})
+      if (!isAdmin) {
+        return res.status(403).send({ message: 'forbidden access' })
       }
       next()
     }
@@ -80,7 +82,7 @@ async function run() {
       res.send(result)
     })
     // users related api 
-    app.get('/users', verifyToken,verifyAdmin, async (req, res) => {
+    app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
       const result = await userCollection.find().toArray()
       res.send(result)
     })
@@ -98,17 +100,17 @@ async function run() {
       }
       res.send({ admin })
     })
-    app.delete('/users/:id',verifyToken, verifyAdmin, async (req, res) => {
+    app.delete('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
-      const query = { $or:[{_id:new ObjectId(id)}, {_id : id}]}
+      const query = { $or: [{ _id: new ObjectId(id) }, { _id: id }] }
       const result = await userCollection.deleteOne(query);
       res.send(result)
     })
 
-    app.patch('/users/admin/:id', verifyToken,verifyAdmin, async (req, res) => {
+    app.patch('/users/admin/:id', verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       console.log(id);
-      const filter = { $or:[{_id:new ObjectId(id)}, {_id : id}]};
+      const filter = { $or: [{ _id: new ObjectId(id) }, { _id: id }] };
       const updateDoc = {
         $set: {
           role: 'admin'
@@ -133,18 +135,18 @@ async function run() {
       const result = await menuCollection.find().toArray()
       res.send(result)
     })
-    app.get('/menu/:id', async(req, res) => {
+    app.get('/menu/:id', async (req, res) => {
       const id = req.params.id;
-      const query = { $or:[{_id:new ObjectId(id)}, {_id : id}]};
+      const query = { $or: [{ _id: new ObjectId(id) }, { _id: id }] };
       // const query = {_id:new ObjectId(id) || id};
       console.log(query);
       const result = await menuCollection.findOne(query);
       res.send(result);
     })
-    app.patch('/menu/:id', async(req,res) => {
+    app.patch('/menu/:id', async (req, res) => {
       const item = req.body;
       const id = req.params.id;
-      const filter = { $or:[{_id:new ObjectId(id)}, {_id : id}]};
+      const filter = { $or: [{ _id: new ObjectId(id) }, { _id: id }] };
       const updateDoc = {
         $set: {
           name: item.name,
@@ -157,14 +159,14 @@ async function run() {
       const result = await menuCollection.updateOne(filter, updateDoc);
       res.send(result)
     })
-    app.post('/menu',verifyToken, verifyAdmin, async(req, res) => {
+    app.post('/menu', verifyToken, verifyAdmin, async (req, res) => {
       const item = req.body;
       const result = await menuCollection.insertOne(item)
       res.send(result)
     })
-    app.delete('/menu/:id',verifyToken,verifyAdmin, async(req, res) => {
+    app.delete('/menu/:id', verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
-      const query = { $or:[{_id:new ObjectId(id)}, {_id : id}]}
+      const query = { $or: [{ _id: new ObjectId(id) }, { _id: id }] }
       const result = await menuCollection.deleteOne(query);
       res.send(result)
     })
@@ -174,9 +176,37 @@ async function run() {
     })
     app.delete('/carts/:id', async (req, res) => {
       const id = req.params.id;
-      const query = { $or:[{_id:new ObjectId(id)}, {_id : id}]}
+      const query = { $or: [{ _id: new ObjectId(id) }, { _id: id }] }
       const result = await cartsCollection.deleteOne(query)
       res.send(result)
+    })
+
+    // stripe intent 
+    app.post('/create-payment-intent', async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+      console.log('amount in the payment api', amount);
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: 'usd',
+        payment_method_types: ['card']
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret
+      })
+    });
+    app.post('/payment', async(req,res) => {
+      const payment = req.body;
+      const paymentResult = await paymentCollection.insertOne(payment)
+      console.log('payment info', payment);
+
+      const query = { _id: {
+        $in: payment.cartIds.map(id => new ObjectId(id))
+      }};
+      const deletedResult = await cartsCollection.deleteMany(query)
+      res.send({paymentResult, deletedResult})
+
     })
 
     // Send a ping to confirm a successful connection
