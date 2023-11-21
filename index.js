@@ -196,17 +196,82 @@ async function run() {
         clientSecret: paymentIntent.client_secret
       })
     });
-    app.post('/payment', async(req,res) => {
+
+    app.get('/payments/:email', verifyToken, async (req, res) => {
+      const query = { email: req.params.email };
+      if (req.params.email !== req.decoded.email) {
+        return res.status(403).send({ message: 'forbidden access' });
+      }
+      const result = await paymentCollection.find(query).toArray();
+      res.send(result)
+    })
+    app.post('/payment', async (req, res) => {
       const payment = req.body;
       const paymentResult = await paymentCollection.insertOne(payment)
       console.log('payment info', payment);
 
-      const query = { _id: {
-        $in: payment.cartIds.map(id => new ObjectId(id))
-      }};
+      const query = {
+        _id: {
+          $in: payment.cartIds.map(id => new ObjectId(id))
+        }
+      };
       const deletedResult = await cartsCollection.deleteMany(query)
-      res.send({paymentResult, deletedResult})
+      res.send({ paymentResult, deletedResult })
 
+    })
+
+    app.get('/admin-stats', verifyToken, verifyAdmin, async (req, res) => {
+      const users = await userCollection.estimatedDocumentCount();
+      const menuItems = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentCollection.estimatedDocumentCount();
+
+      const result = await paymentCollection.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalRevenue: {
+              $sum: '$price'
+            }
+          }
+        }
+      ]).toArray();
+      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+      console.log(result);
+
+      res.send({
+        users,
+        menuItems,
+        orders,
+        revenue
+      })
+    })
+
+    // using aggregate pipeline 
+    app.get('/order-stats', async(req, res) => {
+      const result = await paymentCollection.aggregate([
+        {
+          $unwind: '$itemIds'
+        },
+        {
+          $lookup: {
+            from: 'menu',
+            localField: 'itemIds',
+            foreignField: '_id',
+            as: 'items'
+          }
+        },
+        {
+          $unwind: '$items'
+        },
+        {
+          $group: {
+            _id: '$items.category',
+            quantity: { $sum: 1},
+            revenue: { $sum: '$items.price'}
+          }
+        }
+      ]).toArray();
+      res.send(result)
     })
 
     // Send a ping to confirm a successful connection
